@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin Dashboard – Promo Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, get, update, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
+  authDomain: "shreejee-ayucare.firebaseapp.com",
+  databaseURL: "https://shreejee-ayucare-default-rtdb.firebaseio.com",
+  projectId: "shreejee-ayucare",
+  storageBucket: "shreejee-ayucare.firebasestorage.app",
+  messagingSenderId: "247248655859",
+  appId: "1:247248655859:web:b09bfc30ff6953aad42e86",
+  measurementId: "G-3ZCF4H1QPP"
+};
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    window.addEventListener("DOMContentLoaded", async () => {
+      const currentUser = JSON.parse(localStorage.getItem("currentCollaborator"));
+      if (!currentUser || currentUser.role !== "admin") {
+        window.location.href = "index.html";
+        return;
+      }
+
+      document.getElementById("welcomeText").textContent = `Welcome, ${currentUser.name}`;
+      document.getElementById("logoutBtn").addEventListener("click", () => {
+        localStorage.removeItem("currentCollaborator");
+        window.location.href = "index.html";
+      });
+
+      const usersSnap = await get(ref(db, "users"));
+      const usersData = usersSnap.exists() ? usersSnap.val() : {};
+
+      const ordersSnap = await get(ref(db, "orders"));
+      const allOrders = ordersSnap.exists() ? ordersSnap.val() : {};
+
+      const usersContainer = document.getElementById("usersContainer");
+      usersContainer.innerHTML = "";
+
+      for (const promo in usersData) {
+        const user = usersData[promo];
+        if (user.role === "partner") {
+          const promoCode = promo;
+          const ordersList = Object.entries(allOrders).filter(([orderId, order]) => order.promoCode === promoCode);
+          const orderCount = ordersList.length;
+
+          const row = document.createElement("div");
+          row.className = "grid grid-cols-6 gap-4 py-3 border-b border-gray-200 items-center text-sm";
+          row.innerHTML = `
+            <div class="font-medium text-gray-800">${user.name}</div>
+            <div class="text-gray-600">${user.email}</div>
+            <div class="text-gray-700 font-semibold">${orderCount}</div>
+            <div class="text-gray-700 font-semibold">₹${user.balance}</div>
+            <div>
+              <button class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded font-medium view-orders-btn">View Orders</button>
+            </div>
+            <div>
+              <button class="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded font-medium view-withdraw-btn relative">
+                Withdraw
+              </button>
+            </div>
+          `;
+
+          // Add red dot if pending withdraw
+          const withdrawBtn = row.querySelector(".view-withdraw-btn");
+          if (user.withdrawRequest && user.withdrawRequest.status === "Pending") {
+            const dot = document.createElement("span");
+            dot.className = "absolute top-0 right-0 w-2 h-2 bg-red-600 rounded-full";
+            withdrawBtn.appendChild(dot);
+          }
+
+          // View Orders
+          row.querySelector(".view-orders-btn").addEventListener("click", () => {
+            const modal = document.getElementById("ordersModal");
+            const modalContent = document.getElementById("modalOrdersContent");
+            modalContent.innerHTML = "";
+
+            if (ordersList.length === 0) {
+              modalContent.innerHTML = "<p class='text-gray-500'>No orders for this partner.</p>";
+            } else {
+              ordersList.forEach(([orderId, order]) => {
+                const fullName = `${order.firstName || ""} ${order.lastName || ""}`.trim();
+                const fullAddress = `${order.address || ""}, ${order.city || ""}, ${order.state || ""}, ${order.pincode || ""}`;
+                const status = order.status || "Pending";
+
+                const orderRow = document.createElement("div");
+                orderRow.className = "grid grid-cols-3 gap-4 py-2 border-b border-gray-200 text-sm items-center";
+
+                const getStatusClass = (st) => {
+                  if (st === "Delivered") return "bg-green-100 text-green-800";
+                  if (st === "Not Delivered") return "bg-red-100 text-red-800";
+                  return "bg-gray-100 text-gray-800";
+                };
+
+                orderRow.innerHTML = `
+                  <div class="font-medium text-gray-800">${fullName}</div>
+                  <div class="text-gray-600">${fullAddress}</div>
+                  <select class="status-select border rounded p-1 text-sm ${getStatusClass(status)}" ${order.paid ? "disabled" : ""}>
+                    <option value="Pending" ${status==="Pending"?"selected":""}>Pending</option>
+                    <option value="In Transit" ${status==="In Transit"?"selected":""}>In Transit</option>
+                    <option value="Delivered" ${status==="Delivered"?"selected":""}>Delivered</option>
+                    <option value="Not Delivered" ${status==="Not Delivered"?"selected":""}>Not Delivered</option>
+                  </select>
+                `;
+
+                const select = orderRow.querySelector(".status-select");
+                select.addEventListener("change", async (e) => {
+                  const newStatus = e.target.value;
+
+                  if (order.paid || (status !== "Pending" && (newStatus === "Delivered" || newStatus === "Not Delivered"))) {
+                    alert("This order is already finalized and cannot be changed.");
+                    e.target.value = status;
+                    return;
+                  }
+
+                  if (newStatus === "Delivered" || newStatus === "Not Delivered") {
+                    const confirmMsg = `Are you sure you want to mark this order as "${newStatus}"? This action cannot be undone.`;
+                    if (!confirm(confirmMsg)) {
+                      e.target.value = status;
+                      return;
+                    }
+                  }
+
+                  const orderRef = ref(db, "orders/" + orderId);
+                  const orderSnap = await get(orderRef);
+                  const orderData = orderSnap.val();
+
+                  if (newStatus === "Delivered" && !orderData.paid) {
+                    const userRef = ref(db, "users/" + promoCode);
+                    const userSnap = await get(userRef);
+                    const userData = userSnap.val();
+                    const newBalance = (userData.balance || 0) + 150;
+
+                    await update(userRef, { balance: newBalance });
+                    await update(orderRef, { status: newStatus, paid: true });
+
+                    row.querySelector(".text-gray-700.font-semibold:nth-child(4)").textContent = `₹${newBalance}`;
+                    e.target.disabled = true;
+                    e.target.className = `status-select border rounded p-1 text-sm bg-green-100 text-green-800`;
+
+                  } else if (newStatus === "Not Delivered") {
+                    await update(orderRef, { status: newStatus, paid: true });
+                    e.target.disabled = true;
+                    e.target.className = `status-select border rounded p-1 text-sm bg-red-100 text-red-800`;
+
+                  } else {
+                    await update(orderRef, { status: newStatus });
+                    e.target.className = `status-select border rounded p-1 text-sm bg-gray-100 text-gray-800`;
+                  }
+                });
+
+                modalContent.appendChild(orderRow);
+              });
+            }
+
+            modal.classList.remove("hidden");
+          });
+
+          // Withdraw requests
+          withdrawBtn.addEventListener("click", async () => {
+            const modal = document.getElementById("withdrawModal");
+            const modalContent = document.getElementById("modalWithdrawContent");
+            modalContent.innerHTML = "";
+
+            const userRef = ref(db, "users/" + promoCode);
+            const userSnap = await get(userRef);
+            const userData = userSnap.val();
+
+            // Pending withdraw request
+            if (userData.withdrawRequest && userData.withdrawRequest.status === "Pending") {
+              const pending = document.createElement("div");
+              pending.className = "flex justify-between items-center py-2 border-b border-gray-200";
+              pending.innerHTML = `
+                <span>${user.name} - ₹${userData.withdrawRequest.amount} (Pending)</span>
+                <button class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded font-medium complete-btn">Completed</button>
+              `;
+              pending.querySelector(".complete-btn").addEventListener("click", async () => {
+                if (!confirm(`Mark ₹${userData.withdrawRequest.amount} as paid to admin?`)) return;
+                const newBalance = (userData.balance || 0) - userData.withdrawRequest.amount;
+                const datePaid = new Date().toLocaleString();
+                await update(userRef, {
+                  balance: newBalance,
+                  withdrawRequest: {
+                    amount: userData.withdrawRequest.amount,
+                    status: "Completed",
+                    date: datePaid
+                  }
+                });
+
+                // Remove red dot
+                const dot = withdrawBtn.querySelector("span");
+                if(dot) dot.remove();
+
+                pending.remove();
+
+                // Show as completed row
+                const completedRow = document.createElement("div");
+                completedRow.className = "flex justify-between items-center py-2 border-b border-gray-200 text-gray-600";
+                completedRow.innerHTML = `<span>${user.name} - ₹${userData.withdrawRequest.amount} (Paid on ${datePaid})</span>`;
+                modalContent.appendChild(completedRow);
+
+                // Update main balance display
+                row.querySelector(".text-gray-700.font-semibold:nth-child(4)").textContent = `₹${newBalance}`;
+              });
+              modalContent.appendChild(pending);
+            }
+
+            // Completed withdraw requests
+            if (userData.withdrawRequest && userData.withdrawRequest.status === "Completed") {
+              const completed = document.createElement("div");
+              completed.className = "flex justify-between items-center py-2 border-b border-gray-200 text-gray-600";
+              completed.innerHTML = `<span>${user.name} - ₹${userData.withdrawRequest.amount} (Paid on ${userData.withdrawRequest.date})</span>`;
+              modalContent.appendChild(completed);
+            }
+
+            modal.classList.remove("hidden");
+          });
+
+          usersContainer.appendChild(row);
+        }
+      }
+
+      document.getElementById("closeOrdersModal").addEventListener("click", () => {
+        document.getElementById("ordersModal").classList.add("hidden");
+      });
+
+      document.getElementById("closeWithdrawModal").addEventListener("click", () => {
+        document.getElementById("withdrawModal").classList.add("hidden");
+      });
+
+    });
+  </script>
+
+  <style>
+    body { font-family: 'Poppins', sans-serif; background: #f9fafb; }
+    .header { background: linear-gradient(to right, #2563eb, #3b82f6); }
+  </style>
+</head>
+<body class="h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="header text-white p-4 flex justify-between items-center shadow-md">
+    <h1 id="welcomeText" class="text-lg font-semibold">Welcome</h1>
+    <button id="logoutBtn" class="px-4 py-1 bg-red-500 hover:bg-red-600 rounded text-white font-medium shadow">
+      Logout
+    </button>
+  </header>
+
+  <!-- Partners Table -->
+  <main class="flex-1 p-6">
+    <h2 class="text-2xl font-bold mb-4">Partners</h2>
+    <div id="usersContainer" class="bg-white rounded-lg shadow p-6 text-gray-600">
+      <p class="text-gray-500">Loading partners...</p>
+    </div>
+  </main>
+
+  <!-- Orders Modal -->
+  <div id="ordersModal" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg shadow-lg w-11/12 max-w-3xl p-6 relative">
+      <h3 class="text-xl font-bold mb-4">Orders</h3>
+      <div id="modalOrdersContent" class="space-y-2 max-h-96 overflow-y-auto"></div>
+      <button id="closeOrdersModal" class="absolute top-3 right-3 text-gray-500 hover:text-gray-800 font-bold text-lg">✕</button>
+    </div>
+  </div>
+
+  <!-- Withdraw Modal -->
+  <div id="withdrawModal" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg shadow-lg w-96 max-w-full p-6 relative">
+      <h3 class="text-xl font-bold mb-4">Withdraw Requests</h3>
+      <div id="modalWithdrawContent" class="space-y-2 max-h-96 overflow-y-auto"></div>
+      <button id="closeWithdrawModal" class="absolute top-3 right-3 text-gray-500 hover:text-gray-800 font-bold text-lg">✕</button>
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Collaborator Login – Promo Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(-45deg, #1e3a8a, #2563eb, #3b82f6, #93c5fd);
+      background-size: 400% 400%;
+      animation: gradientBG 12s ease infinite;
+    }
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .glass-card:hover {
+      transform: translateY(-6px) scale(1.02);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+    .glow-input:focus {
+      outline: none;
+      box-shadow: 0 0 15px rgba(59,130,246,0.6);
+      border-color: #3b82f6;
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center h-screen font-sans">
+
+  <div class="glass-card rounded-2xl shadow-xl w-full max-w-sm p-8 text-center">
+    <!-- Logo -->
+    <img src="Logo.png" alt="Promo Dashboard" class="mx-auto h-20 w-20 mb-3 drop-shadow-lg rounded-full object-cover" onerror="this.style.display='none'">
+    <h1 class="text-2xl font-bold text-white drop-shadow mb-1">Promo Dashboard</h1>
+    <p class="text-sm text-blue-100 mb-6">ShreeJee Ayucare</p>
+
+    <!-- Login Form -->
+    <form id="loginForm" class="space-y-5">
+      <input id="loginEmail" type="email" placeholder="Email" class="glow-input w-full border rounded-lg p-3 bg-white/80" required />
+      <div class="relative">
+        <input id="loginPassword" type="password" placeholder="Password" class="glow-input w-full border rounded-lg p-3 bg-white/80 pr-12" required />
+        <button type="button" id="togglePassword" class="absolute inset-y-0 right-3 flex items-center text-gray-600 hover:text-gray-900">👁️</button>
+      </div>
+      <button type="submit" class="w-full py-3 rounded-lg font-semibold text-lg text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow-lg transform transition hover:scale-105">Login</button>
+    </form>
+    <p id="loginError" class="text-red-200 text-sm mt-4 hidden">Invalid credentials</p>
+  </div>
+
+  <script>
+    const users = [
+      { email: "user1@example.com", password: "user123", name: "Jatin", promoCode: "JATIN100", role: "partner", balance: 0 },
+      { email: "user2@example.com", password: "pass456", name: "Kartikey", promoCode: "KARTIKEY100", role: "partner", balance: 0 },
+      { email: "admin@example.com", password: "admin123", name: "Admin", promoCode: "Admin1", role: "admin", balance: 0 },
+      { email: "Anuragsharma3562@gmail.com", password: "krishna@shreejee", name: "Krishna", promoCode: "KRISHNA100", role: "partner", balance: 0}
+    ];
+
+    const loginForm = document.getElementById("loginForm");
+    const loginError = document.getElementById("loginError");
+    const togglePassword = document.getElementById("togglePassword");
+    const passwordInput = document.getElementById("loginPassword");
+
+    // Show/hide password
+    togglePassword.addEventListener("click", () => {
+      const isPassword = passwordInput.type === "password";
+      passwordInput.type = isPassword ? "text" : "password";
+      togglePassword.textContent = isPassword ? "🙈" : "👁️";
+    });
+
+    loginForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const email = document.getElementById("loginEmail").value.trim();
+      const pass = passwordInput.value.trim();
+      const user = users.find(u => u.email === email && u.password === pass);
+
+      if(user) {
+    // Save current user in localStorage
+    localStorage.setItem("currentCollaborator", JSON.stringify(user));
+
+    // Redirect based on role
+    if(user.role === "partner") {
+      window.location.href = "dashboard.html";
+    } else if(user.role === "admin") {
+      window.location.href = "admin-dashboard.html";
+    }
+  } else {
+    loginError.classList.remove("hidden");
+  }
+    });
+  </script>
+</body>
+</html>

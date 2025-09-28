@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, set, get, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
     const firebaseConfig = {
   apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
@@ -65,6 +65,7 @@
       const modalClose = document.getElementById("closeModal");
       const withdrawForm = document.getElementById("withdrawForm");
       const withdrawInput = document.getElementById("withdrawAmount");
+      const upiInput = document.getElementById("upiId");
 
       const withdrawSectionBtn = document.getElementById("withdrawSectionBtn");
       const historySectionBtn = document.getElementById("historySectionBtn");
@@ -103,7 +104,7 @@
             const row = document.createElement("div");
             row.className = "py-1 border-b border-gray-200 text-sm flex justify-between";
             const date = request.timestamp ? new Date(request.timestamp).toLocaleString() : "";
-            row.innerHTML = `<span>₹${request.amount} - ${request.status}</span><span>${date}</span>`;
+            row.innerHTML = `<span>₹${request.amount} - ${request.status} (UPI: ${request.upi || "-"})</span><span>${request.date}</span>`;
             historyContainer.appendChild(row);
           }
         }
@@ -111,6 +112,7 @@
 
       balanceBtn.addEventListener("click", async () => {
         withdrawInput.value = "";
+        upiInput.value = "";
         const canWithdraw = await checkWithdrawStatus();
         if (!canWithdraw) {
           const msg = document.createElement("div");
@@ -133,14 +135,20 @@
       withdrawForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const amount = parseFloat(withdrawInput.value);
+        const upiId = upiInput.value.trim();
         if (isNaN(amount) || amount <= 0 || amount > currentUser.balance) {
           alert("Invalid amount!");
+          return;
+        }
+        if (!upiId) {
+          alert("Please enter your UPI ID / Number");
           return;
         }
 
         // Create withdraw request in firebase
         await set(ref(db, `users/${currentUser.promoCode}/withdrawRequest`), {
           amount: amount,
+          upiId: upiId,
           timestamp: Date.now(),
           status: "Pending"
         });
@@ -232,8 +240,9 @@
         <button id="historySectionBtn" class="tab-btn">History</button>
       </div>
       <div id="withdrawSection" class="space-y-4">
-        <form id="withdrawForm">
+        <form id="withdrawForm" class="space-y-3">
           <input id="withdrawAmount" type="number" min="1" placeholder="Enter amount" class="w-full border rounded-lg p-2" required/>
+          <input id="upiId" type="text" placeholder="Enter UPI ID or UPI Number" class="w-full border rounded-lg p-2" required/>
           <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-medium">Submit</button>
         </form>
       </div>

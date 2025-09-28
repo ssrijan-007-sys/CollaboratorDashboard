@@ -7,8 +7,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, get, update, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
+    // --- Firebase Config ---
     const firebaseConfig = {
   apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
   authDomain: "shreejee-ayucare.firebaseapp.com",
@@ -19,6 +20,7 @@
   appId: "1:247248655859:web:b09bfc30ff6953aad42e86",
   measurementId: "G-3ZCF4H1QPP"
 };
+
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
@@ -76,16 +78,18 @@
             withdrawBtn.appendChild(dot);
           }
 
-          // View Orders
+          // --- View Orders ---
           row.querySelector(".view-orders-btn").addEventListener("click", () => {
             const modal = document.getElementById("ordersModal");
             const modalContent = document.getElementById("modalOrdersContent");
             modalContent.innerHTML = "";
 
-            if (ordersList.length === 0) {
+            const userOrders = Object.entries(allOrders).filter(([orderId, order]) => order.promoCode === promoCode);
+
+            if (userOrders.length === 0) {
               modalContent.innerHTML = "<p class='text-gray-500'>No orders for this partner.</p>";
             } else {
-              ordersList.forEach(([orderId, order]) => {
+              userOrders.forEach(([orderId, order]) => {
                 const fullName = `${order.firstName || ""} ${order.lastName || ""}`.trim();
                 const fullAddress = `${order.address || ""}, ${order.city || ""}, ${order.state || ""}, ${order.pincode || ""}`;
                 const status = order.status || "Pending";
@@ -96,11 +100,12 @@
                 const getStatusClass = (st) => {
                   if (st === "Delivered") return "bg-green-100 text-green-800";
                   if (st === "Not Delivered") return "bg-red-100 text-red-800";
+                  if (st === "In Transit") return "bg-blue-100 text-blue-800";
                   return "bg-gray-100 text-gray-800";
                 };
 
                 orderRow.innerHTML = `
-                  <div class="font-medium text-gray-800">${fullName}</div>
+                  <div class="font-medium text-gray-800">${fullName || "Unknown"}</div>
                   <div class="text-gray-600">${fullAddress}</div>
                   <select class="status-select border rounded p-1 text-sm ${getStatusClass(status)}" ${order.paid ? "disabled" : ""}>
                     <option value="Pending" ${status==="Pending"?"selected":""}>Pending</option>
@@ -152,7 +157,7 @@
 
                   } else {
                     await update(orderRef, { status: newStatus });
-                    e.target.className = `status-select border rounded p-1 text-sm bg-gray-100 text-gray-800`;
+                    e.target.className = `status-select border rounded p-1 text-sm ${getStatusClass(newStatus)}`;
                   }
                 });
 
@@ -163,7 +168,7 @@
             modal.classList.remove("hidden");
           });
 
-          // Withdraw requests
+          // --- Withdraw requests ---
           withdrawBtn.addEventListener("click", async () => {
             const modal = document.getElementById("withdrawModal");
             const modalContent = document.getElementById("modalWithdrawContent");
@@ -173,16 +178,16 @@
             const userSnap = await get(userRef);
             const userData = userSnap.val();
 
-            // Pending withdraw request
+            // Pending withdraw
             if (userData.withdrawRequest && userData.withdrawRequest.status === "Pending") {
               const pending = document.createElement("div");
               pending.className = "flex justify-between items-center py-2 border-b border-gray-200";
               pending.innerHTML = `
-                <span>${user.name} - ₹${userData.withdrawRequest.amount} (Pending)</span>
+                <span>${user.name} - ₹${userData.withdrawRequest.amount} (Pending) | UPI: ${userData.withdrawRequest.upiId}</span>
                 <button class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded font-medium complete-btn">Completed</button>
               `;
               pending.querySelector(".complete-btn").addEventListener("click", async () => {
-                if (!confirm(`Mark ₹${userData.withdrawRequest.amount} as paid to admin?`)) return;
+                if (!confirm(`Mark ₹${userData.withdrawRequest.amount} as paid?`)) return;
                 const newBalance = (userData.balance || 0) - userData.withdrawRequest.amount;
                 const datePaid = new Date().toLocaleString();
                 await update(userRef, {
@@ -190,29 +195,27 @@
                   withdrawRequest: {
                     amount: userData.withdrawRequest.amount,
                     status: "Completed",
-                    date: datePaid
+                    date: datePaid,
+                    upi: userData.withdrawRequest.upiId
                   }
                 });
 
-                // Remove red dot
                 const dot = withdrawBtn.querySelector("span");
                 if(dot) dot.remove();
 
                 pending.remove();
 
-                // Show as completed row
                 const completedRow = document.createElement("div");
                 completedRow.className = "flex justify-between items-center py-2 border-b border-gray-200 text-gray-600";
                 completedRow.innerHTML = `<span>${user.name} - ₹${userData.withdrawRequest.amount} (Paid on ${datePaid})</span>`;
                 modalContent.appendChild(completedRow);
 
-                // Update main balance display
                 row.querySelector(".text-gray-700.font-semibold:nth-child(4)").textContent = `₹${newBalance}`;
               });
               modalContent.appendChild(pending);
             }
 
-            // Completed withdraw requests
+            // Completed withdraw
             if (userData.withdrawRequest && userData.withdrawRequest.status === "Completed") {
               const completed = document.createElement("div");
               completed.className = "flex justify-between items-center py-2 border-b border-gray-200 text-gray-600";
@@ -234,7 +237,6 @@
       document.getElementById("closeWithdrawModal").addEventListener("click", () => {
         document.getElementById("withdrawModal").classList.add("hidden");
       });
-
     });
   </script>
 
